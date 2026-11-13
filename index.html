@@ -5,13 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Haorannote – Flashcards</title>
 <script src="https://cdn.tailwindcss.com"></script>
-<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Google+Sans:ital,opsz,wght@0,17..18,400..700;1,17..18,400..700&display=swap" rel="stylesheet">
 <script>
   // Tailwind: enable class-based dark mode, add our font + accent colors
   tailwind.config = {
     darkMode: 'class',
     theme: { extend: {
-      fontFamily: { sans: ['"Bricolage Grotesque"', 'system-ui', 'sans-serif'] },
+      fontFamily: { sans: ['"Google Sans"', 'system-ui', 'sans-serif'] },
       colors: { brand: { DEFAULT: '#1d4ed8', light: '#60a5fa' } }
     } }
   };
@@ -25,17 +27,45 @@
   })();
 </script>
 <style>
-  /* 3D flip card */
-  .scene { perspective: 1200px; }
-  .card { transform-style: preserve-3d; transition: transform .55s cubic-bezier(.4,.2,.2,1); }
+  /* Card text uses the same font as the rest of the app (Google Sans) */
+  .font-card-front, .font-card-back { font-family: "Google Sans", system-ui, sans-serif; }
+  /* 3D flip card
+     The card turns on a slightly springy curve (it overshoots a touch and settles),
+     while its wrapper lifts toward you and drops back, so the flip feels physical. */
+  .scene { perspective: 1400px; }
+  .card { transform-style: preserve-3d; transition: transform .7s cubic-bezier(.3,1.3,.45,1); }
   .card.flipped { transform: rotateY(180deg); }
-  .face { backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+  .face { backface-visibility: hidden; -webkit-backface-visibility: hidden; transition: box-shadow .35s ease; }
   .back { transform: rotateY(180deg); }
-  @keyframes inNext { from { opacity: 0; transform: translateX(48px); } to { opacity: 1; transform: none; } }
-  @keyframes inPrev { from { opacity: 0; transform: translateX(-48px); } to { opacity: 1; transform: none; } }
-  .slide-next { animation: inNext .3s ease-out; }
-  .slide-prev { animation: inPrev .3s ease-out; }
-  @media (prefers-reduced-motion: reduce) { .card { transition: none; } .slide-next, .slide-prev { animation: none; } }
+  .lift { transform-origin: center; }
+  .lift.lifting { animation: lift .7s cubic-bezier(.3,.7,.3,1); }
+  .lift.lifting .face { box-shadow: 0 24px 50px -12px rgb(0 0 0 / .35); }
+  @keyframes lift { 0% { transform: none; } 40% { transform: translateY(-6px) scale(1.035); } 100% { transform: none; } }
+
+  /* Next / previous: the new card glides in with a slight tilt from the side you moved toward */
+  @keyframes inNext { from { opacity: 0; transform: translateX(64px) rotate(2.5deg) scale(.96); } to { opacity: 1; transform: none; } }
+  @keyframes inPrev { from { opacity: 0; transform: translateX(-64px) rotate(-2.5deg) scale(.96); } to { opacity: 1; transform: none; } }
+  .slide-next { animation: inNext .42s cubic-bezier(.2,.85,.25,1); }
+  .slide-prev { animation: inPrev .42s cubic-bezier(.2,.85,.25,1); }
+
+  /* Star: pops with a little twist when you star a card, and a ring bursts out */
+  /* Only ONE star is ever shown: the star on the face turned away is hidden outright
+     (some browsers otherwise draw it through the card), and the swap happens at the
+     moment the card is edge-on, so the star looks like it turns over with the card. */
+  .star-btn, .star-btn svg { backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+  .star-btn { transition: visibility 0s linear .16s; }
+  .card:not(.flipped) .back .star-btn, .card.flipped .face:not(.back) .star-btn { visibility: hidden; }
+  .star-btn svg { transition: transform .2s ease; }
+  .star-btn:hover svg { transform: scale(1.12); }
+  .star-btn.pop svg { animation: starPop .5s cubic-bezier(.3,1.6,.5,1); }
+  .star-btn.pop::after { content: ""; position: absolute; inset: 4px; border-radius: 9999px; border: 2px solid #fbbf24; animation: starRing .5s ease-out forwards; pointer-events: none; }
+  @keyframes starPop { 0% { transform: scale(.6) rotate(-30deg); } 60% { transform: scale(1.3) rotate(8deg); } 100% { transform: none; } }
+  @keyframes starRing { from { opacity: .9; transform: scale(.6); } to { opacity: 0; transform: scale(1.7); } }
+
+  @media (prefers-reduced-motion: reduce) {
+    .card { transition: none; } .lift.lifting, .slide-next, .slide-prev, .star-btn.pop svg { animation: none; }
+    .star-btn.pop::after { display: none; }
+  }
 </style>
 </head>
 <body class="font-sans bg-[#f2f5fa] text-[#141c2b] dark:bg-[#0d121b] dark:text-[#e6ecf5] min-h-screen transition-colors">
@@ -358,8 +388,9 @@ function restoreFrom(file) {
 }
 
 function deckCard(d) {
-  return `<article class="rounded-2xl bg-white dark:bg-[#161d2b] border border-black/10 dark:border-white/10 p-5 hover:border-brand dark:hover:border-brand-light hover:-translate-y-0.5 transition">
-    <h3 class="text-lg font-bold truncate">${esc(d.title)}</h3>
+  const st = d.id === STAR_ID;
+  return `<article class="rounded-2xl bg-white dark:bg-[#161d2b] border ${st ? 'border-amber-400/70' : 'border-black/10 dark:border-white/10'} p-5 hover:border-brand dark:hover:border-brand-light hover:-translate-y-0.5 transition">
+    <h3 class="text-lg font-bold truncate flex items-center gap-1.5">${st ? `<span class="${starOn} shrink-0">${icon.star.replace('w-6 h-6', 'w-5 h-5')}</span>` : ''}<span class="truncate">${esc(d.title)}</span></h3>
     <p class="text-sm opacity-60 mt-1">${d.cards.length} card${d.cards.length === 1 ? '' : 's'}${d.modified ? ' · edited ' + fmtDate(d.modified) : ''}</p>
     <div class="mt-5 flex flex-wrap items-center gap-2">
       <button data-study="${d.id}" class="${btnPrimary} !py-2">${icon.play} Study</button>
@@ -387,7 +418,8 @@ function folderCard(f) {
 function renderDashboard() {
   const folder = folders.find(f => f.id === currentFolder);
   if (currentFolder && !folder) currentFolder = null;
-  const deckList = sortItems(decks.filter(d => (d.folderId || null) === currentFolder), 'title', 'modified');
+  const deckList = sortItems(decks.filter(d => (d.folderId || null) === currentFolder), 'title', 'modified')
+    .sort((a, b) => (b.id === STAR_ID) - (a.id === STAR_ID));   // the Starred deck is always pinned first
   const folderList = currentFolder ? [] : sortItems(folders.map(f => ({ ...f, mod: folderModified(f) })), 'name', 'mod');
   const empty = !deckList.length && !folderList.length;
 
@@ -637,6 +669,37 @@ function renderEditor() {
   };
   document.getElementById('title').focus();
 }
+
+/* ---------- Starred cards ----------
+   Starred cards are copied into ONE ordinary deck with the fixed id 'starred',
+   so it shows on the dashboard, can be studied / quizzed / edited / exported
+   like any deck, and syncs through the gist with no extra code. A card counts
+   as starred when a card with the same term AND definition is in that deck.
+   Cards you miss in a quiz are starred automatically. */
+const STAR_ID = 'starred';
+const starDeck = () => decks.find(d => d.id === STAR_ID);
+const cardKey = c => JSON.stringify([c.term, c.definition]);
+const isStarred = c => { const sd = starDeck(); return !!sd && sd.cards.some(x => cardKey(x) === cardKey(c)); };
+function setStar(c, on) {
+  if (!c || isStarred(c) === on) return;
+  let sd = starDeck();
+  if (!sd) { sd = { id: STAR_ID, title: 'Starred', cards: [], folderId: null, modified: Date.now() }; decks.unshift(sd); }
+  if (studyDeck === sd) studyDeck = { ...sd, cards: [...sd.cards] };   // keep the open study session stable
+  sd.cards = on ? [...sd.cards, { term: c.term, definition: c.definition }] : sd.cards.filter(x => cardKey(x) !== cardKey(c));
+  sd.modified = Date.now();
+  saveDecks();
+}
+icon.star = '<svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/></svg>';
+const starOn = 'text-amber-400 [&_svg]:fill-amber-400';
+
+/* ---------- Google Translate ----------
+   Opens Google Translate with the text, source language auto-detected.
+   The target language is remembered in this browser. */
+const TL_KEY = 'deckly:tl';
+const TL_LANGS = [['zh-CN', 'Chinese (Simplified)'], ['zh-TW', 'Chinese (Traditional)'], ['en', 'English'], ['fr', 'French'], ['es', 'Spanish'], ['ja', 'Japanese'], ['ko', 'Korean']];
+let tl = (() => { try { return localStorage.getItem(TL_KEY) || 'zh-CN'; } catch (e) { return 'zh-CN'; } })();
+const translateUrl = text => 'https://translate.google.com/?sl=auto&tl=' + encodeURIComponent(tl) + '&text=' + encodeURIComponent(text) + '&op=translate';
+icon.translate = '<svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M3 5h9M7.5 3v2M5 12c3-2 4.5-4.5 5.5-7M5.5 7.5c1 2 2.6 3.6 4.5 4.5M12 21l4.5-10 4.5 10M13.6 17.5h5.8"/></svg>';
 
 /* ---------- Shared helpers for study + quiz ---------- */
 icon.search = '<svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>';
@@ -979,19 +1042,23 @@ function renderStudy() {
 
       <div id="slide">
         <div class="scene">
+         <div id="lift" class="lift">
           <div id="card" role="button" tabindex="0" aria-label="Flip card" class="card relative h-72 sm:h-80 cursor-pointer select-none">
             <div class="face absolute inset-0 rounded-3xl bg-white dark:bg-[#161d2b] border border-black/10 dark:border-white/10 shadow-lg flex flex-col items-center justify-center p-8 text-center">
+              <button data-star="front" class="star-btn absolute top-3 right-3 z-10 p-2 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-light">${icon.star}</button>
               <span id="front-label" class="text-sm opacity-50 mb-3"></span>
-              <p id="front" class="text-2xl sm:text-3xl font-bold break-words max-w-full overflow-auto"></p>
+              <p id="front" class="font-card-front text-2xl sm:text-3xl font-bold break-words max-w-full overflow-auto"></p>
             </div>
             <div class="face back absolute inset-0 rounded-3xl bg-brand text-white shadow-lg flex flex-col items-center justify-center p-8 text-center">
+              <button data-star="back" class="star-btn absolute top-3 right-3 z-10 p-2 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-light">${icon.star}</button>
               <span id="back-label" class="text-sm opacity-70 mb-3"></span>
-              <p id="back-text" class="text-xl sm:text-2xl font-medium break-words max-w-full overflow-auto"></p>
+              <p id="back-text" class="font-card-back text-xl sm:text-2xl font-medium break-words max-w-full overflow-auto"></p>
             </div>
           </div>
+         </div>
         </div>
       </div>
-      <p class="text-center text-sm opacity-50 mt-4">Click the card or press Space to flip. Use ← → to navigate.</p>
+      <p class="text-center text-sm opacity-50 mt-4">Click the card or press Space to flip. Use ← → to navigate, S to star.</p>
 
       ${canSpeak ? `<div class="flex items-center justify-center gap-4 mt-5 flex-wrap">
         <button id="listen" aria-label="Read aloud" class="${btnGhost} !py-2">${icon.speaker} Listen</button>
@@ -1005,23 +1072,53 @@ function renderStudy() {
         <button id="prev" class="${btnGhost}">${icon.left} Previous</button>
         <button id="next" class="${btnPrimary}">Next ${icon.right}</button>
       </div>
-      <div class="flex justify-center mt-3">
+      <div class="flex justify-center items-center gap-2 mt-3 flex-wrap">
         <button id="google" class="${btnGhost} !py-2">${icon.search} Search Google</button>
+        <button id="translate" class="${btnGhost} !py-2">${icon.translate} Google Translate</button>
+        <label class="sr-only" for="tl">Translate into</label>
+        <select id="tl" title="Translate into" class="${input} !w-auto !py-2 text-sm">${TL_LANGS.map(([v, l]) => `<option value="${v}" ${v === tl ? 'selected' : ''}>${l}</option>`).join('')}</select>
       </div>
     </div>`;
 
   const $ = id => document.getElementById(id);
-  const card = $('card'), slide = $('slide');
+  const card = $('card'), slide = $('slide'), lift = $('lift'), stars = [...card.querySelectorAll('[data-star]')];
+  const paintStar = () => {                    // both faces carry a star, so it turns with the card
+    const on = isStarred(studyDeck.cards[idx]), flipped = card.classList.contains('flipped');
+    stars.forEach(b => {
+      const back = b.dataset.star === 'back', visible = back === flipped;
+      b.className = b.className.replace(/ (text-amber-400|\[&_svg\]:fill-amber-400|opacity-40|hover:opacity-100|text-white\/70|hover:text-white)/g, '') + ' ' +
+        (on ? starOn : back ? 'text-white/70 hover:text-white' : 'opacity-40 hover:opacity-100');
+      b.setAttribute('aria-pressed', String(on));
+      b.setAttribute('aria-label', on ? 'Unstar card' : 'Star card');
+      b.title = on ? 'Remove from Starred' : 'Add to Starred';
+      b.tabIndex = visible ? 0 : -1;             // only the star on the side facing you can be focused
+      b.setAttribute('aria-hidden', String(!visible));
+    });
+  };
+  const toggleStar = () => {
+    const c = studyDeck.cards[idx], on = !isStarred(c);
+    setStar(c, on); paintStar();
+    stars.forEach(b => { b.classList.remove('pop'); if (on) { void b.offsetWidth; b.classList.add('pop'); } });
+  };
+  lift.onanimationend = () => lift.classList.remove('lifting');   // shadow settles back down after the lift
+  stars.forEach(b => {
+    b.onclick = e => { e.stopPropagation(); toggleStar(); };
+    b.onkeydown = e => { if (e.key === ' ' || e.key === 'Enter') e.stopPropagation(); };   // don't flip the card
+  });
   const show = dir => {
     const c = studyDeck.cards[idx];
     // Reset the flip instantly (no animation) so the next answer never flashes mid-turn
-    card.style.transition = 'none'; card.classList.remove('flipped'); void card.offsetWidth; card.style.transition = '';
+    card.style.transition = 'none'; stars.forEach(b => b.style.transition = 'none');
+    card.classList.remove('flipped'); void card.offsetWidth;
+    card.style.transition = ''; stars.forEach(b => b.style.transition = '');
+    lift.classList.remove('lifting'); stars.forEach(b => b.classList.remove('pop'));
     $('front').textContent = frontOf(c);
     $('back-text').textContent = backOf(c);
     $('front-label').textContent = sideName(first);
     $('back-label').textContent = sideName(first === 'term' ? 'def' : 'term');
     $('count').textContent = `Card ${idx + 1} of ${total}`;
     $('bar').style.width = ((idx + 1) / total * 100) + '%';
+    paintStar();
     ['prev', 'next'].forEach(id => {
       const off = id === 'prev' ? idx === 0 : idx === total - 1;
       $(id).disabled = off; $(id).classList.toggle('opacity-40', off);
@@ -1036,6 +1133,8 @@ function renderStudy() {
 
   card.onclick = () => {
     const flipped = card.classList.toggle('flipped');
+    lift.classList.remove('lifting'); void lift.offsetWidth; lift.classList.add('lifting');   // replay the lift each flip
+    paintStar();
     if (autoplay) { const c = studyDeck.cards[idx]; speak(flipped ? backOf(c) : frontOf(c)); }   // read the side now showing
   };
   $('prev').onclick = () => move(-1);
@@ -1053,6 +1152,13 @@ function renderStudy() {
     const text = card.classList.contains('flipped') ? backOf(c) : frontOf(c);
     window.open('https://www.google.com/search?q=' + encodeURIComponent(text), '_blank', 'noopener');
   };
+  $('translate').onclick = () => {
+    // Translates whichever side of the card you are currently looking at
+    const c = studyDeck.cards[idx];
+    const text = card.classList.contains('flipped') ? backOf(c) : frontOf(c);
+    window.open(translateUrl(text), '_blank', 'noopener');
+  };
+  $('tl').onchange = e => { tl = e.target.value; try { localStorage.setItem(TL_KEY, tl); } catch (err) {} };
   if (canSpeak) {
     const paintAuto = () => {
       $('autoplay').setAttribute('aria-checked', String(autoplay));
@@ -1268,6 +1374,10 @@ icon.bulb = '<svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width
 icon.search = '<svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>';
 icon.cross = '<svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/></svg>';
 
+// Rebuild the card a question came from (questions store only prompt/answer,
+// which keeps seeded quiz IDs unchanged)
+const qCard = (x, side) => side === 'term' ? { term: x.prompt, definition: x.answer } : { term: x.answer, definition: x.prompt };
+
 function renderQuiz() {
   const q = quiz;
   if (q.stage === 'pick') return renderMixPick();
@@ -1327,7 +1437,7 @@ function renderQuiz() {
       (optState(k).canCross ? '' : ' invisible');
     const opt = (o, k) => {
       const st = optState(k);
-      return `<div class="flex items-stretch gap-2"><button data-opt="${k}" ${st.off ? 'disabled' : ''} class="${optCls(o, k)}"><span class="opacity-50 mr-2">${k + 1}</span>${esc(o)}</button>` +
+      return `<div class="flex items-stretch gap-2"><button data-opt="${k}" ${st.off ? 'disabled' : ''} class="${optCls(o, k)}"><span class="opacity-50 mr-2">${k + 1}</span><span class="font-card-back text-lg">${esc(o)}</span></button>` +
         `<button data-cross="${k}" ${st.canCross ? '' : 'disabled tabindex="-1"'} aria-pressed="${st.crossed}" aria-label="${st.crossed ? 'Restore choice ' : 'Cross out choice '}${k + 1}" title="${st.crossed ? 'Restore this choice' : 'Cross out this choice'}" class="${crossCls(k)}">${icon.cross}</button></div>`;
     };
     // Tip: rules out one random wrong answer (regular quizzes only; always leaves at least 2 choices live)
@@ -1360,10 +1470,12 @@ function renderQuiz() {
           <p class="text-sm opacity-50 pt-1">${sideName(q.side)}</p>
           <div class="flex items-center gap-2 shrink-0">
             ${canSpeak ? `<button id="listen" data-icon="1" aria-label="Read question aloud" title="Read question aloud" class="p-1.5 rounded-full text-brand dark:text-brand-light hover:bg-brand/10 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-light">${icon.speaker}</button>` : ''}
-            ${q.timed ? '' : `<a id="qsearch" href="https://www.google.com/search?q=${encodeURIComponent(cur.prompt)}" target="_blank" rel="noopener noreferrer" class="${btnGhost} !py-1.5 !px-3 text-sm" title="Search this question on Google">${icon.search} Google</a>`}
+            ${q.timed ? '' : `<a id="qsearch" href="https://www.google.com/search?q=${encodeURIComponent(cur.prompt)}" target="_blank" rel="noopener noreferrer" class="${btnGhost} !py-1.5 !px-3 text-sm" title="Search this question on Google">${icon.search} Google</a>
+            <a id="qtranslate" href="${translateUrl(cur.prompt)}" target="_blank" rel="noopener noreferrer" class="${btnGhost} !py-1.5 !px-3 text-sm" title="Translate this question with Google Translate">${icon.translate} Translate</a>`}
+            <button id="qstar" aria-pressed="${isStarred(qCard(cur, q.side))}" aria-label="${isStarred(qCard(cur, q.side)) ? 'Unstar card' : 'Star card'}" title="${isStarred(qCard(cur, q.side)) ? 'Remove from Starred' : 'Add to Starred'}" class="p-1.5 rounded-full transition hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-light ${isStarred(qCard(cur, q.side)) ? starOn : 'opacity-40 hover:opacity-100'}">${icon.star}</button>
           </div>
         </div>
-        <p class="text-2xl font-bold break-words">${esc(cur.prompt)}</p>
+        <p class="font-card-front text-2xl font-bold break-words">${esc(cur.prompt)}</p>
       </div>
       <div class="space-y-3">${cur.options.map(opt).join('')}</div>
       ${tipBtn ? `<div class="flex flex-wrap items-center gap-2 mt-4">${tipBtn}</div>` : ''}
@@ -1388,7 +1500,7 @@ function renderQuiz() {
         // Timed quiz: one attempt per question. Streak scoring: the nth correct answer
         // in a row is worth n points; a wrong answer is worth 0 and resets the streak.
         if (right) { q.streak++; q.gain = q.streak; q.score += q.gain; q.correct++; q.done = 'correct'; }
-        else { q.streak = 0; q.gain = 0; q.tried.push(k); q.wrong.push(cur); q.done = 'revealed'; }
+        else { q.streak = 0; q.gain = 0; q.tried.push(k); q.wrong.push(cur); setStar(qCard(cur, q.side), true); q.done = 'revealed'; }
         if (last) q.finishedAt = Date.now();     // freeze the clock on the final answer
         render();                                // no auto-advance: the player clicks Next
         return;
@@ -1399,7 +1511,7 @@ function renderQuiz() {
         render(); later(900);
       } else {
         q.tried.push(k);
-        if (q.tried.length === 1) q.wrong.push(cur); // first miss goes on the review list
+        if (q.tried.length === 1) { q.wrong.push(cur); setStar(qCard(cur, q.side), true); } // first miss: review list + auto-star
         if (wrongMode === 'show') q.done = 'revealed'; // otherwise stay open so they can retry
         render();
       }
@@ -1418,6 +1530,8 @@ function renderQuiz() {
       aid.tipped.push(pool[Math.floor(Math.random() * pool.length)]);
       repaint();
     };
+    const qs = document.getElementById('qstar');
+    if (qs) qs.onclick = () => { const c = qCard(cur, q.side); setStar(c, !isStarred(c)); render(); };
     const rd = document.getElementById('listen');                       // read the question only, never the choices
     if (rd) rd.onclick = () => { if (speaking) return stopSpeech(); speak(cur.prompt); };
     const rv = document.getElementById('reveal');
@@ -1438,13 +1552,15 @@ function renderQuiz() {
       ${q.timed ? `<p class="text-lg font-medium mt-3">Time taken: ${fmtTime(q.elapsed)}</p>
       <p class="text-sm opacity-70">Seed <span class="font-mono font-bold">${q.seed}</span> · Questions show ${sideName(q.side).toLowerCase()} · Deck check <span class="font-mono">${fmtPrint(q.print)}</span> · Quiz ID <span class="font-mono">${q.qid}</span> · Engine v${QUIZ_ENGINE}</p>` : ''}
     </div>
-    ${q.wrong.length ? `<h2 class="text-lg font-bold mt-6 mb-2">Review missed</h2>
-      <div class="space-y-2">${q.wrong.map(w => `<div class="p-3 rounded-xl bg-white dark:bg-[#161d2b] border border-black/10 dark:border-white/10"><p class="font-medium break-words">${esc(w.prompt)}</p><p class="text-sm text-emerald-700 dark:text-emerald-400 break-words">${esc(w.answer)}</p></div>`).join('')}</div>` : ''}
+    ${q.wrong.length ? `<h2 class="text-lg font-bold mt-6 mb-1">Review missed</h2>
+      <p class="text-sm opacity-60 mb-2">Missed cards were added to your Starred deck.</p>
+      <div class="space-y-2">${q.wrong.map(w => `<div class="p-3 rounded-xl bg-white dark:bg-[#161d2b] border border-black/10 dark:border-white/10"><p class="font-card-front font-bold text-lg break-words">${esc(w.prompt)}</p><p class="font-card-back text-emerald-700 dark:text-emerald-400 break-words">${esc(w.answer)}</p></div>`).join('')}</div>` : ''}
     <div class="flex flex-wrap gap-3 mt-6">
       ${q.wrong.length ? `<button id="retry" class="${btnPrimary}">Retry missed</button>` : ''}
       <button id="retake" class="${q.wrong.length ? btnGhost : btnPrimary}">New quiz</button>
       ${q.timed ? `<button id="reseed" class="${btnGhost}">Retake this seed</button>` : ''}
       <button id="studydeck" class="${btnGhost}">Study deck</button>
+      ${q.wrong.length && starDeck() && q.deck.id !== STAR_ID ? `<button id="studystar" class="${btnGhost}">${icon.star.replace('w-6 h-6', 'w-5 h-5')} Study starred</button>` : ''}
     </div></div>`;
   const again = list => Object.assign(quiz, { stage: 'q', qs: list, i: 0, score: 0, tried: [], done: false, wrong: [], timed: false });
   const r = document.getElementById('retry');
@@ -1453,6 +1569,8 @@ function renderQuiz() {
   const rs = document.getElementById('reseed');
   if (rs) rs.onclick = () => startTimed(q.deck, q.seed, q.side);
   document.getElementById('studydeck').onclick = () => { studyDeck = q.deck; idx = 0; go('study'); };
+  const ss = document.getElementById('studystar');
+  if (ss) ss.onclick = () => { studyDeck = starDeck(); idx = 0; go('study'); };
   finish();
 }
 
@@ -1470,9 +1588,10 @@ document.addEventListener('keydown', e => {
     else if (e.key === ' ' && document.activeElement.tagName !== 'BUTTON') { e.preventDefault(); lst.playing ? listenPause() : listenPlay(); }
     return;
   }
-  if (view !== 'study' || /INPUT|TEXTAREA/.test(document.activeElement.tagName)) return;
+  if (view !== 'study' || /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) return;
   if (e.key === 'ArrowRight') document.getElementById('next').click();
   else if (e.key === 'ArrowLeft') document.getElementById('prev').click();
+  else if (e.key === 's' || e.key === 'S') { if (!e.metaKey && !e.ctrlKey && !e.altKey) document.querySelector('[data-star]').click(); }
   else if (e.key === ' ' || e.key === 'Enter') {
     if (document.activeElement.tagName === 'BUTTON') return;   // let focused buttons (Listen, Autoplay...) work
     e.preventDefault(); document.getElementById('card').click();
